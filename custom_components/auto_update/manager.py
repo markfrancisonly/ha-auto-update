@@ -29,16 +29,11 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.helpers.start import async_at_started
 
-from .const import (
-    DOMAIN,
-    MARKETPLACE,
-    MAX_ATTEMPTS,
-    RESTART_ISSUE_PREFIX,
-    RETRY_DELAY,
-    SIGNAL_RESTART_CHANGED,
-)
+from .const import DOMAIN, MARKETPLACE, MAX_ATTEMPTS, RESTART_ISSUE_PREFIX, RETRY_DELAY
 
 _LOGGER = logging.getLogger(__name__)
+
+type AutoUpdateConfigEntry = ConfigEntry[AutoUpdater]
 
 
 @callback
@@ -77,9 +72,10 @@ class _Attempts:
 class AutoUpdater:
     """Install pending Marketplace updates one at a time."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: AutoUpdateConfigEntry) -> None:
         self.hass = hass
         self.entry = entry
+        self.signal_restart = f"{DOMAIN}_{entry.entry_id}_restart_required"
         # The switch sets this when it restores its state
         self.enabled = False
         self._queue: asyncio.Queue[str] = asyncio.Queue()
@@ -270,7 +266,7 @@ class AutoUpdater:
     def _async_issue_updated(self, event: Event) -> None:
         if event.data["action"] != "remove":
             self._async_hide_issue(event.data["issue_id"])
-        async_dispatcher_send(self.hass, SIGNAL_RESTART_CHANGED)
+        async_dispatcher_send(self.hass, self.signal_restart)
 
     @callback
     def _async_hide_issue(self, issue_id: str) -> None:

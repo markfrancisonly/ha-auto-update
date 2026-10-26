@@ -1,0 +1,14 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "restart_required": {
+        "default": "mdi:restart-alert"
+      }
+    },
+    "switch": {
+      "auto_update": {
+        "default": "mdi:package-up"
+      }
+    }
+  }
+}

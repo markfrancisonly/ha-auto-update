@@ -38,14 +38,17 @@ nothing to configure.
 
 Someone has to accept the Marketplace risk warning once (**Settings →
 Marketplace**). Until then the Marketplace refuses installs that no user
-started, and Auto Update logs a warning for each update it tried.
+started, and Auto Update gives up on each update after three tries, with a
+warning in the log.
 
 ## Entities
 
+Both sit on an **Auto update** service device.
+
 - `switch.auto_update`: on (default) installs updates as they appear.
   Turning it on installs everything already waiting.
-- `binary_sensor.restart_required`: on while an installed update waits for a
-  restart. Attribute `repositories` lists them.
+- `binary_sensor.auto_update_restart_required`: on while an installed update
+  waits for a restart. Attribute `repositories` lists them.
 
 Restart on your own schedule, for example:
 
@@ -55,7 +58,7 @@ triggers:
     at: "04:00:00"
 conditions:
   - condition: state
-    entity_id: binary_sensor.restart_required
+    entity_id: binary_sensor.auto_update_restart_required
     state: "on"
 actions:
   - action: homeassistant.restart
@@ -63,8 +66,17 @@ actions:
 
 ## Notes
 
-- If the Marketplace is still finishing another install, the update is tried
-  again after 15 seconds, up to three times. After that it waits for the next
-  change to that update.
+- A failed install is tried again after 15 seconds, up to three times for
+  the same version. After that the update waits for a newer version, a
+  restart, or the switch being turned off and on. A first try that the
+  Marketplace refuses because it is still finishing another install succeeds
+  on the retry.
 - Cards and themes install too and never need a restart; browsers pick them up
   on their next reload.
+
+## Development
+
+```
+pip install -r requirements_test.txt
+pytest
+```

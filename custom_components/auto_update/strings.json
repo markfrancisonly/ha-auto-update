@@ -9,5 +9,22 @@
     "abort": {
       "single_instance_allowed": "Auto update is already set up."
     }
+  },
+  "entity": {
+    "binary_sensor": {
+      "restart_required": {
+        "name": "Restart required",
+        "state_attributes": {
+          "repositories": {
+            "name": "Repositories"
+          }
+        }
+      }
+    },
+    "switch": {
+      "auto_update": {
+        "name": "Auto update"
+      }
+    }
   }
 }

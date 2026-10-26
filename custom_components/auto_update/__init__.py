@@ -6,13 +6,10 @@ one is owed, and the matching repairs are kept out of Settings.
 
 from __future__ import annotations
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import PLATFORMS
-from .manager import AutoUpdater
-
-type AutoUpdateConfigEntry = ConfigEntry[AutoUpdater]
+from .manager import AutoUpdateConfigEntry, AutoUpdater
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AutoUpdateConfigEntry) -> bool:

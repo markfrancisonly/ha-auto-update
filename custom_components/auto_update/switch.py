@@ -5,38 +5,40 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import STATE_OFF
+from homeassistant.const import STATE_OFF, EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from . import AutoUpdateConfigEntry
+from .entity import AutoUpdateEntity
+from .manager import AutoUpdateConfigEntry
+
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: AutoUpdateConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the auto update switch."""
     async_add_entities([AutoUpdateSwitch(entry)])
 
 
-class AutoUpdateSwitch(SwitchEntity, RestoreEntity):
-    """On: Marketplace updates install as soon as they appear."""
+class AutoUpdateSwitch(AutoUpdateEntity, SwitchEntity, RestoreEntity):
+    """On: updates install as soon as they appear."""
 
-    _attr_name = "Auto update"
-    _attr_icon = "mdi:package-up"
-    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_name = None
 
     def __init__(self, entry: AutoUpdateConfigEntry) -> None:
-        self._updater = entry.runtime_data
-        self._attr_unique_id = f"{entry.entry_id}_auto_update"
+        super().__init__(entry, "auto_update")
 
     async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
         last = await self.async_get_last_state()
         self._attr_is_on = last is None or last.state != STATE_OFF
-        self._updater.async_set_enabled(self._attr_is_on)
+        self.updater.async_set_enabled(self._attr_is_on)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         self._set(True)
@@ -46,5 +48,5 @@ class AutoUpdateSwitch(SwitchEntity, RestoreEntity):
 
     def _set(self, on: bool) -> None:
         self._attr_is_on = on
-        self._updater.async_set_enabled(on)
+        self.updater.async_set_enabled(on)
         self.async_write_ha_state()
