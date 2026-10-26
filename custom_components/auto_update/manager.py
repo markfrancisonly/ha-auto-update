@@ -120,10 +120,13 @@ class AutoUpdater:
 
     def restart_required(self) -> list[str]:
         """Return the names of the packages that wait for a restart."""
-        return [
-            (issue.translation_placeholders or {}).get("name", issue.issue_id)
-            for issue in self._restart_issues()
-        ]
+        # One package can leave a repair per installed version
+        return list(
+            dict.fromkeys(
+                (issue.translation_placeholders or {}).get("name", issue.issue_id)
+                for issue in self._restart_issues()
+            )
+        )
 
     def _restart_issues(self) -> list[ir.IssueEntry]:
         return [
