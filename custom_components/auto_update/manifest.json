@@ -1,7 +1,7 @@
 {
   "domain": "auto_update",
   "name": "Auto Update",
-  "after_dependencies": ["marketplace", "update"],
+  "after_dependencies": ["update"],
   "codeowners": ["@markfrancisonly"],
   "config_flow": true,
   "dependencies": [],
