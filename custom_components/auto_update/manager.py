@@ -5,9 +5,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 
+from homeassistant.components.update import (
+    ATTR_IN_PROGRESS,
+    ATTR_LATEST_VERSION,
+    SERVICE_INSTALL,
+)
 from homeassistant.components.update import DOMAIN as UPDATE_DOMAIN
-from homeassistant.components.update import SERVICE_INSTALL
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, STATE_ON
 from homeassistant.core import (
@@ -53,8 +58,20 @@ def _is_pending(state: State | None) -> bool:
     return (
         state is not None
         and state.state == STATE_ON
-        and state.attributes.get("in_progress") is not True
+        and state.attributes.get(ATTR_IN_PROGRESS) is not True
     )
+
+
+def _latest(state: State | None) -> str | None:
+    return state.attributes.get(ATTR_LATEST_VERSION) if state else None
+
+
+@dataclass
+class _Attempts:
+    """Install attempts for one version of one update."""
+
+    version: str | None
+    count: int = 0
 
 
 class AutoUpdater:
@@ -66,8 +83,10 @@ class AutoUpdater:
         # The switch sets this when it restores its state
         self.enabled = False
         self._queue: asyncio.Queue[str] = asyncio.Queue()
-        self._queued: set[str] = set()
-        self._attempts: dict[str, int] = {}
+        # Queued, installing or waiting to retry: state changes leave these
+        # alone, so a failed install can't requeue itself past the retry delay
+        self._busy: set[str] = set()
+        self._attempts: dict[str, _Attempts] = {}
         self._retries: dict[str, Callable[[], None]] = {}
         self._unsub_state: Callable[[], None] | None = None
         self._started = asyncio.Event()
@@ -109,6 +128,8 @@ class AutoUpdater:
         """Turn installing on or off."""
         self.enabled = enabled
         if enabled:
+            # Turning it on again also retries what was given up on
+            self._attempts.clear()
             self.async_queue_pending()
 
     @callback
@@ -164,50 +185,85 @@ class AutoUpdater:
 
     @callback
     def _async_queue(self, entity_id: str) -> None:
-        if not self.enabled or entity_id in self._queued:
+        if not self.enabled or entity_id in self._busy or self._gave_up(entity_id):
             return
-        self._queued.add(entity_id)
+        self._busy.add(entity_id)
         self._queue.put_nowait(entity_id)
+
+    def _gave_up(self, entity_id: str) -> bool:
+        attempts = self._attempts.get(entity_id)
+        return (
+            attempts is not None
+            and attempts.count >= MAX_ATTEMPTS
+            and attempts.version == _latest(self.hass.states.get(entity_id))
+        )
 
     async def _async_run(self) -> None:
         """Install queued updates one at a time."""
         await self._started.wait()
         while True:
             entity_id = await self._queue.get()
-            self._queued.discard(entity_id)
-            if not self.enabled or not _is_pending(self.hass.states.get(entity_id)):
-                continue
-            try:
-                await self.hass.services.async_call(
-                    UPDATE_DOMAIN,
-                    SERVICE_INSTALL,
-                    {ATTR_ENTITY_ID: entity_id},
-                    blocking=True,
-                )
-            except HomeAssistantError as err:
-                self._async_retry(entity_id, err)
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Installing %s failed", entity_id)
+            if await self._async_install(entity_id):
+                self._async_retry_later(entity_id)
             else:
-                self._attempts.pop(entity_id, None)
+                self._busy.discard(entity_id)
+
+    async def _async_install(self, entity_id: str) -> bool:
+        """Install one update; return True to try it again later."""
+        state = self.hass.states.get(entity_id)
+        if not self.enabled or not _is_pending(state):
+            return False
+        version = _latest(state)
+        attempts = self._attempts.get(entity_id)
+        if attempts is None or attempts.version != version:
+            attempts = self._attempts[entity_id] = _Attempts(version)
+        if attempts.count >= MAX_ATTEMPTS:
+            return False
+        attempts.count += 1
+
+        error: Exception | None = None
+        try:
+            await self.hass.services.async_call(
+                UPDATE_DOMAIN,
+                SERVICE_INSTALL,
+                {ATTR_ENTITY_ID: entity_id},
+                blocking=True,
+            )
+        except HomeAssistantError as err:
+            error = err
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("Installing %s failed", entity_id)
+            error = err
+
+        state = self.hass.states.get(entity_id)
+        if not _is_pending(state):
+            self._attempts.pop(entity_id, None)
+            return False
+        if _latest(state) != version:
+            return True
+        if attempts.count >= MAX_ATTEMPTS:
+            _LOGGER.warning(
+                "Giving up on %s %s after %s attempts: %s",
+                entity_id,
+                version,
+                attempts.count,
+                error or "still not installed",
+            )
+            return False
+        _LOGGER.debug("Retrying %s in %s s: %s", entity_id, RETRY_DELAY, error)
+        return True
 
     @callback
-    def _async_retry(self, entity_id: str, err: HomeAssistantError) -> None:
-        attempt = self._attempts.get(entity_id, 0) + 1
-        if attempt >= MAX_ATTEMPTS:
-            self._attempts.pop(entity_id, None)
-            _LOGGER.warning("Could not install %s: %s", entity_id, err)
-            return
-        self._attempts[entity_id] = attempt
-        _LOGGER.debug("Retrying %s in %s s: %s", entity_id, RETRY_DELAY, err)
+    def _async_retry_later(self, entity_id: str) -> None:
+        """Queue an update again after the delay; it stays busy until then."""
 
         @callback
-        def _async_again(_now) -> None:
+        def _async_retry(_now) -> None:
             self._retries.pop(entity_id, None)
-            self._async_queue(entity_id)
+            self._queue.put_nowait(entity_id)
 
         self._retries[entity_id] = async_call_later(
-            self.hass, RETRY_DELAY, _async_again
+            self.hass, RETRY_DELAY, _async_retry
         )
 
     @callback
