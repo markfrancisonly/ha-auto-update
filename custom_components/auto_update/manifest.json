@@ -1,0 +1,15 @@
+{
+  "domain": "auto_update",
+  "name": "Auto Update",
+  "version": "2026.10.0",
+  "after_dependencies": ["marketplace", "update"],
+  "codeowners": ["@markfrancisonly"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/markfrancisonly/ha-auto-update#readme",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/markfrancisonly/ha-auto-update/issues",
+  "requirements": [],
+  "single_config_entry": true
+}

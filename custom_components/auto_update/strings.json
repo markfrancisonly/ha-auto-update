@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Auto update",
+        "description": "Installs each Marketplace update as soon as it appears and keeps the restart required repairs out of Settings. Restarting stays with you: a binary sensor turns on when an installed integration needs one."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Auto update is already set up."
+    }
+  }
+}
